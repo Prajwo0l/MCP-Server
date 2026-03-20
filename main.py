@@ -2,6 +2,50 @@ from fastmcp import FastMCP
 import os
 import sqlite3
 import json
+import datetime  # keep this
+from google.oauth2.credentials import Credentials
+from google_auth_oauthlib.flow import InstalledAppFlow
+from googleapiclient.discovery import build
+
+SCOPES = ['https://www.googleapis.com/auth/calendar']
+
+def get_calendar_service():
+    creds = None
+
+    if os.path.exists('token.json'):
+        creds = Credentials.from_authorized_user_file('token.json', SCOPES)
+
+    if not creds or not creds.valid:
+        flow = InstalledAppFlow.from_client_secrets_file('credentials.json', SCOPES)
+        creds = flow.run_local_server(port=0)
+
+        with open('token.json', 'w') as token:
+            token.write(creds.to_json())
+
+    service = build('calendar', 'v3', credentials=creds)
+    return service
+
+
+def create_calendar_event(date, amount, category, note):
+    service = get_calendar_service()
+
+    event = {
+        'summary': f"💸 {category}: {amount}",
+        'description': note or '',
+        'start': {
+            'date': date,  # YYYY-MM-DD format
+            'timeZone': 'Asia/Kathmandu',  # replace with your timezone
+        },
+        'end': {
+            'date': date,
+            'timeZone': 'Asia/Kathmandu',
+        },
+    }
+
+    service.events().insert(calendarId='primary', body=event).execute()
+
+
+
 
 # Paths
 BASE_DIR = os.path.dirname(__file__)
@@ -41,7 +85,14 @@ def add_expense(date: str, amount: float, category: str, subcategory: str = '', 
             'INSERT INTO expenses (date, amount, category, subcategory, note) VALUES (?, ?, ?, ?, ?)',
             (date, amount, category, subcategory, note)
         )
-        return {'status': 'ok', 'id': cur.lastrowid}
+
+    # Add to Google Calendar
+    try:
+        create_calendar_event(date, amount, category, note)
+    except Exception as e:
+        print("Calendar error:", e)
+
+    return {'status': 'ok', 'id': cur.lastrowid}
 
 @mcp.tool()
 def list_expenses(start_date: str, end_date: str) -> list:
