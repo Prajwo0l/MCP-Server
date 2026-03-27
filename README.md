@@ -1,6 +1,6 @@
 # 💰 Expense MCP Server
 
-A lightweight, local-first **Model Context Protocol (MCP) server** for tracking personal and business expenses. It exposes tools that any MCP-compatible AI client (such as Claude Desktop) can call to add, list, and summarize expenses — all stored in a local SQLite database — with optional **Google Calendar integration** to log expenses as calendar events.
+A lightweight, local-first **Model Context Protocol (MCP) server** for tracking personal and business expenses. It exposes tools that any MCP-compatible AI client (such as Claude Desktop) can call to add, list, and summarize expenses — all stored in a local SQLite database — with optional **Google Calendar integration**, a **Budget + Alerts** system, and a **Credit (Income) system** that grounds your budgets in what you actually earn.
 
 ---
 
@@ -10,9 +10,18 @@ A lightweight, local-first **Model Context Protocol (MCP) server** for tracking 
 - 📅 **Sync to Google Calendar** — log expenses as calendar events after user approval
 - 📋 **List expenses** filtered by date range
 - 📊 **Summarize expenses** by category over any date range
-- 🗂️ **20 built-in categories** with detailed subcategories (food, transport, health, travel, etc.)
+- 💳 **Credit system** — log your income (salary, freelance, rental, bonus, etc.) so the system knows your real spendable pool for each month
+- 💰 **Budget + Alerts** — set monthly spending limits per category, verified against your income:
+  - ⚠️ Warning when you hit 80% of a category budget
+  - 🚨 Alert when you exceed a category budget
+  - 💡 Pace alert when spending faster than usual
+  - 🚨 Alert when total budgets exceed total income
+  - 🚨 Alert when total spending exceeds total income
+  - ⚠️ Low savings rate warning
+- 📅 **Monthly overview** — one-shot financial snapshot: income vs budgeted vs spent vs saved
+- 🗂️ **20 built-in categories** with detailed subcategories
 - 💾 **Local SQLite storage** — your data never leaves your machine
-- 🔐 **Human-in-the-loop (HITL)** — calendar events are only created after explicit user confirmation
+- 🔐 **Human-in-the-loop (HITL)** — calendar events only created after explicit user confirmation
 - ⚡ Built with [FastMCP](https://github.com/jlowin/fastmcp) for a clean, minimal setup
 
 ---
@@ -38,8 +47,6 @@ cd expense-mcp-server
 
 ### 2. Install Dependencies
 
-This project uses [`uv`](https://github.com/astral-sh/uv) for dependency management.
-
 ```bash
 uv sync
 ```
@@ -55,45 +62,21 @@ uv sync
 
 To enable the `add_to_calendar` tool, you need a Google Cloud OAuth2 credentials file.
 
-### 1. Create a Google Cloud Project
+1. Go to [Google Cloud Console](https://console.cloud.google.com/) and create/select a project
+2. Enable the **Google Calendar API**
+3. Create **OAuth 2.0 credentials** (Desktop App type) and download as `credentials.json` in the project root
+4. On first run, a browser window will open for authorisation; a `token.json` is saved automatically
 
-1. Go to [Google Cloud Console](https://console.cloud.google.com/)
-2. Create a new project (or select an existing one)
-3. Navigate to **APIs & Services → Library**
-4. Search for **Google Calendar API** and enable it
-
-### 2. Create OAuth2 Credentials
-
-1. Go to **APIs & Services → Credentials**
-2. Click **Create Credentials → OAuth client ID**
-3. Choose **Desktop App** as the application type
-4. Download the credentials file and save it as `credentials.json` in the project root
-
-### 3. Authenticate
-
-On first run, the server will open a browser window asking you to authorise access to your Google Calendar. After approving, a `token.json` file will be saved automatically for future use.
-
-> ⚠️ Keep `credentials.json` and `token.json` out of version control. Add them to `.gitignore`.
+> ⚠️ Keep `credentials.json` and `token.json` out of version control (already in `.gitignore`).
 
 ---
 
 ## 🔧 Configuration with Claude Desktop
 
-To use this server with **Claude Desktop**, add it to your `claude_desktop_config.json`:
+Add this to your `claude_desktop_config.json`:
 
-### macOS / Linux
-
-```
-~/Library/Application Support/Claude/claude_desktop_config.json
-```
-
-### Windows
-
-```
-%APPDATA%\Claude\claude_desktop_config.json
-```
-
-### Config Entry
+**Windows:** `%APPDATA%\Claude\claude_desktop_config.json`  
+**macOS/Linux:** `~/Library/Application Support/Claude/claude_desktop_config.json`
 
 ```json
 {
@@ -102,7 +85,7 @@ To use this server with **Claude Desktop**, add it to your `claude_desktop_confi
       "command": "uv",
       "args": [
         "--directory",
-        "/absolute/path/to/expense-mcp-server",
+        "C:\\Users\\YourName\\Desktop\\Expense MCP Server",
         "run",
         "main.py"
       ]
@@ -111,134 +94,299 @@ To use this server with **Claude Desktop**, add it to your `claude_desktop_confi
 }
 ```
 
-> ⚠️ Replace `/absolute/path/to/expense-mcp-server` with the actual full path to the project folder on your machine.
->
-> **Windows example:** `C:\\Users\\YourName\\Desktop\\expense-mcp-server`
-
-After saving the config, **restart Claude Desktop**. You should see `ExpenseTracker` listed as a connected tool.
+Restart Claude Desktop after saving. `ExpenseTracker` will appear as a connected tool.
 
 ---
 
 ## 🛠️ Available Tools
 
-### `add_expense`
+### Expense Tools
 
-Add a new expense entry to the SQLite database.
-
-| Parameter | Type | Required | Description |
-|---|---|---|---|
-| `date` | `string` | ✅ | Date in `YYYY-MM-DD` format |
-| `amount` | `float` | ✅ | Expense amount (e.g. `49.99`) |
-| `category` | `string` | ✅ | Main category (see [Categories](#-categories)) |
-| `subcategory` | `string` | ❌ | Subcategory within the main category |
-| `note` | `string` | ❌ | Optional note or description |
-
-> This tool **only saves to the database**. It does not create a calendar event. To sync to Google Calendar, use `add_to_calendar` separately after confirming with the user.
-
-**Example prompt to Claude:**
-> *"Add an expense of $12.50 for coffee on 2025-07-10."*
-
-**Returns:**
-```json
-{ "status": "ok", "id": 42, "date": "2025-07-10", "amount": 12.50, "category": "food", "note": "Morning coffee" }
-```
-
----
-
-### `add_to_calendar`
-
-Create a Google Calendar event for an expense. 
-
-> ⚠️ **Only call this tool after the user has explicitly approved adding the expense to their calendar.** This is intentional — the HITL design ensures no calendar events are created without user confirmation.
+#### `add_expense`
+Add a new expense. Automatically checks active budgets and income health, returning alerts if any thresholds are crossed.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
 | `date` | `string` | ✅ | Date in `YYYY-MM-DD` format |
 | `amount` | `float` | ✅ | Expense amount |
-| `category` | `string` | ✅ | Expense category (used as the event title) |
-| `note` | `string` | ❌ | Optional note (added as event description) |
+| `category` | `string` | ✅ | Main category (e.g. `food`, `transport`) |
+| `subcategory` | `string` | ❌ | Optional subcategory |
+| `note` | `string` | ❌ | Optional note |
 
-The event is created as an all-day event on the given date, titled `💸 {category}: {amount}`, in the `Asia/Kathmandu` timezone.
+#### `add_to_calendar`
+Create a Google Calendar event for an expense (only after user approval).
 
-**Example prompt to Claude:**
-> *"Add that coffee expense to my calendar too."*
+#### `list_expenses`
+List all expenses between two dates.
 
-**Returns:**
-```json
-{ "status": "ok", "message": "Calendar event created: food 12.5 on 2025-07-10" }
-```
+#### `edit_expense`
 
----
-
-### `list_expenses`
-
-Retrieve all expenses within a date range.
+Correct a mistake in an existing expense — wrong amount, wrong category, wrong date. Only the fields you provide are updated.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `start_date` | `string` | ✅ | Start date in `YYYY-MM-DD` format |
-| `end_date` | `string` | ✅ | End date in `YYYY-MM-DD` format |
+| `expense_id` | `int` | ✅ | ID of the expense to edit (get it from `list_expenses`) |
+| `date` | `string` | ❌ | Corrected date `YYYY-MM-DD` |
+| `amount` | `float` | ❌ | Corrected amount |
+| `category` | `string` | ❌ | Corrected category |
+| `subcategory` | `string` | ❌ | Corrected subcategory |
+| `note` | `string` | ❌ | Updated note |
 
-**Example prompt to Claude:**
-> *"Show me all my expenses from July 1 to July 31, 2025."*
+After editing, budget alerts are re-evaluated automatically.
+
+**Example prompts:**
+> *"The grocery amount should be 950 not 1200 — fix expense 5."*
+> *"Change the category of expense 3 to transport."*
+
+#### `delete_expense`
+Delete an expense entry by ID.
+
+#### `summarize`
+Summarize spending by category over a date range.
+
+---
+
+### 💳 Credit (Income) Tools
+
+#### `add_credit`
+
+Log income received for the month — the foundation of the budget system. Once income is logged, the system can verify that your budgets don't exceed what you earned, and track real net savings.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `date` | `string` | ✅ | Date income was received, `YYYY-MM-DD` |
+| `amount` | `float` | ✅ | Amount received |
+| `source` | `string` | ✅ | Label: `salary`, `freelance`, `rental`, `bonus`, `interest`, `gift`, `refund`, `other` |
+| `note` | `string` | ❌ | Optional description |
+
+**Example prompts:**
+> *"I got my salary of 75,000 today."*
+> *"Log a 15,000 freelance payment received on March 25."*
+> *"Add rental income of 8,000 for this month."*
 
 **Returns:**
 ```json
-[
-  {
-    "id": 1,
-    "date": "2025-07-10",
-    "amount": 12.50,
-    "category": "food",
-    "subcategory": "coffee_tea",
-    "note": "Morning coffee"
+{
+  "status": "ok",
+  "id": 3,
+  "date": "2026-03-01",
+  "amount": 75000,
+  "source": "salary",
+  "month_summary": {
+    "total_income": 75000,
+    "total_budgeted": 42000,
+    "total_spent": 18500,
+    "unallocated": 33000,
+    "net_savings": 56500
   }
-]
+}
 ```
 
----
-
-### `summarize`
-
-Get a category-level summary of spending over a date range.
+#### `list_credits`
+List all income entries for a given month.
 
 | Parameter | Type | Required | Description |
 |---|---|---|---|
-| `start_date` | `string` | ✅ | Start date in `YYYY-MM-DD` format |
-| `end_date` | `string` | ✅ | End date in `YYYY-MM-DD` format |
-| `category` | `string` | ❌ | Filter to a specific category only |
+| `month` | `string` | ❌ | Month in `YYYY-MM` format. Defaults to current month |
 
-**Example prompts to Claude:**
-> *"Summarize my spending for this month."*
-> *"How much did I spend on food in June 2025?"*
+#### `edit_credit`
+
+Edit an existing income entry — correct a wrong amount, change the source, or fix the date. Only the fields you pass are updated; everything else stays unchanged.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `credit_id` | `int` | ✅ | ID of the entry to edit (get it from `list_credits`) |
+| `amount` | `float` | ❌ | Corrected amount |
+| `source` | `string` | ❌ | Corrected source label |
+| `date` | `string` | ❌ | Corrected date `YYYY-MM-DD` |
+| `note` | `string` | ❌ | Updated note |
+
+After editing, the response includes a refreshed `month_summary` and an alert if your budgets now exceed your updated income.
+
+**Example prompts:**
+> *"My salary was actually 80,000 not 75,000 — fix credit 1."*
+> *"Change the source of credit 2 to freelance."*
+
+#### `delete_credit`
+Delete an income entry by ID (use `list_credits` to find the ID).
+
+---
+
+### 💰 Budget Tools
+
+#### `set_budget`
+
+Set (or update) a monthly spending cap for a category. If income has been logged, the response includes an `income_context` block showing how much of your income is allocated vs unallocated. If your total budgets exceed income, an alert is returned immediately.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `category` | `string` | ✅ | Category to budget |
+| `limit_amount` | `float` | ✅ | Monthly spending cap |
+| `month` | `string` | ❌ | `YYYY-MM`. Defaults to current month |
 
 **Returns:**
 ```json
-[
-  { "category": "food", "total_amount": 340.75 },
-  { "category": "transport", "total_amount": 120.00 }
-]
+{
+  "status": "ok",
+  "message": "Budget set: food → 10,000 for 2026-03",
+  "income_context": {
+    "total_income": 75000,
+    "total_budgeted": 42000,
+    "unallocated": 33000
+  }
+}
+```
+
+#### `list_budgets`
+List all budgets for a month with live spent / remaining / % used and status.
+
+#### `check_budget_alerts`
+Return all active alerts for a month — category budgets AND income health.
+
+#### `delete_budget`
+Remove a budget for a category + month.
+
+---
+
+### 📅 Monthly Overview Tool
+
+#### `monthly_overview`
+
+A complete one-shot financial snapshot for any month. Combines income, budgets, and spending into one structured response.
+
+| Parameter | Type | Required | Description |
+|---|---|---|---|
+| `month` | `string` | ❌ | `YYYY-MM`. Defaults to current month |
+
+**Call this when the user asks:**
+> *"How am I doing this month?"*
+> *"Give me a financial summary."*
+> *"What's my income vs spending?"*
+
+**Returns:**
+```json
+{
+  "month": "2026-03",
+  "income": {
+    "total": 83000,
+    "by_source": [
+      { "source": "freelance", "amount": 8000 },
+      { "source": "salary", "amount": 75000 }
+    ]
+  },
+  "budgets": {
+    "total_allocated": 42000,
+    "unallocated": 41000
+  },
+  "spending": {
+    "total_spent": 18500,
+    "net_savings": 64500,
+    "savings_percent": 77.7
+  },
+  "category_breakdown": [
+    { "category": "food", "budget": 10000, "spent": 8500, "remaining": 1500, "percent_used": 85.0, "status": "⚠️  WARNING" },
+    { "category": "transport", "budget": 5000, "spent": 2100, "remaining": 2900, "percent_used": 42.0, "status": "✅ OK" }
+  ],
+  "alerts": ["✅ Finances look healthy this month."]
+}
 ```
 
 ---
 
-## 📦 Available Resource
+## 🚨 Alert Reference
 
-### `expense://categories`
+| Alert | Trigger |
+|---|---|
+| ⚠️ Category Warning | Spent ≥ 80% of a category budget |
+| 🚨 Category Exceeded | Spent ≥ 100% of a category budget |
+| 💡 Pace Alert | Spending rate implies month-end overage (> 20% ahead of proportional pace) |
+| 🚨 Over-Allocated | Total budgets > total income |
+| 🚨 Spending > Income | Total spending exceeds total income for the month |
+| ⚠️ Low Savings | Saving less than 10% of income |
 
-A built-in MCP resource that returns the full list of supported categories and subcategories as a JSON object. AI clients can read this resource to know which category values are valid when calling `add_expense`.
+Alerts fire **automatically inside `add_expense`** responses when relevant. Call `check_budget_alerts` or `monthly_overview` any time for a full status snapshot.
+
+---
+
+## 📁 Project Structure
+
+```
+expense-mcp-server/
+├── main.py              # MCP server — all tools and resources
+├── categories.json      # Supported categories and subcategories
+├── credentials.json     # Google OAuth2 credentials (not committed)
+├── token.json           # Google OAuth2 token (auto-generated, not committed)
+├── expenses.db          # SQLite database (auto-created on first run)
+├── pyproject.toml       # Project metadata and dependencies
+├── uv.lock              # Locked dependency versions
+└── README.md            # This file
+```
+
+---
+
+## 🗄️ Database Schema
+
+```sql
+-- Expense records
+CREATE TABLE expenses (
+    id          INTEGER PRIMARY KEY AUTOINCREMENT,
+    date        TEXT NOT NULL,        -- YYYY-MM-DD
+    amount      REAL NOT NULL,
+    category    TEXT NOT NULL,
+    subcategory TEXT DEFAULT NULL,
+    note        TEXT DEFAULT NULL
+);
+
+-- Monthly category budgets
+CREATE TABLE budgets (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    category     TEXT NOT NULL,
+    month        TEXT NOT NULL,       -- YYYY-MM
+    limit_amount REAL NOT NULL,
+    UNIQUE(category, month)
+);
+
+-- Income / credit entries
+CREATE TABLE credits (
+    id     INTEGER PRIMARY KEY AUTOINCREMENT,
+    date   TEXT NOT NULL,             -- YYYY-MM-DD
+    amount REAL NOT NULL,
+    source TEXT NOT NULL,             -- e.g. 'salary', 'freelance'
+    note   TEXT DEFAULT NULL
+);
+```
+
+All tables are created automatically on first run.
+
+---
+
+## 💡 Recommended Workflow
+
+```
+1. Start of month:
+   → add_credit "salary 75000"         # log your income first
+   → set_budget food 10000             # allocate budgets (system checks vs income)
+   → set_budget transport 5000
+   → set_budget subscriptions 3000
+   → ...
+
+2. Throughout the month:
+   → add_expense (alerts fire if nearing limits)
+   → check_budget_alerts               # quick status check any time
+
+3. End of month review:
+   → monthly_overview                  # full income vs spending vs savings snapshot
+```
 
 ---
 
 ## 🗂️ Categories
 
-The server includes **20 top-level categories**, each with detailed subcategories:
-
 | Category | Example Subcategories |
 |---|---|
 | `food` | groceries, dining_out, coffee_tea, delivery_fees |
 | `transport` | fuel, public_transport, cab_ride_hailing, parking |
-| `housing` | rent, repairs_service, furnishing, maintenance_hoa |
+| `housing` | rent, repairs_service, furnishing |
 | `utilities` | electricity, internet_broadband, mobile_phone |
 | `health` | medicines, doctor_consultation, fitness_gym |
 | `education` | books, courses, online_subscriptions, exam_fees |
@@ -257,79 +405,44 @@ The server includes **20 top-level categories**, each with detailed subcategorie
 | `pet` | food, vet, grooming, supplies |
 | `misc` | uncategorized, other |
 
-> See `categories.json` for the complete list of subcategories.
-
 ---
 
-## 📁 Project Structure
+## 💡 Example Conversations
 
 ```
-expense-mcp-server/
-├── main.py              # MCP server — tools and resources
-├── categories.json      # All supported categories and subcategories
-├── credentials.json     # Google OAuth2 credentials (not committed)
-├── token.json           # Google OAuth2 token — auto-generated on first auth (not committed)
-├── expenses.db          # SQLite database (auto-created on first run)
-├── pyproject.toml       # Project metadata and dependencies
-├── uv.lock              # Locked dependency versions
-└── README.md            # This file
+"I got my salary of 75,000 today."
+→ Logs credit, shows total income & unallocated amount
+
+"Set my food budget to 10,000."
+→ Sets budget, shows how much income is still unallocated
+
+"Log 1,200 for groceries today."
+→ Saves expense, fires ⚠️ warning if food budget is near limit
+
+"Am I on track this month?"
+→ check_budget_alerts: returns all warnings + income health
+
+"Give me a full financial summary."
+→ monthly_overview: income, budgets, spending, savings in one shot
 ```
-
----
-
-## 🗄️ Database Schema
-
-Expenses are stored in a single SQLite table:
-
-```sql
-CREATE TABLE expenses (
-    id          INTEGER PRIMARY KEY AUTOINCREMENT,
-    date        TEXT    NOT NULL,        -- YYYY-MM-DD
-    amount      REAL    NOT NULL,        -- Numeric value
-    category    TEXT    NOT NULL,        -- Top-level category
-    subcategory TEXT    DEFAULT NULL,    -- Optional subcategory
-    note        TEXT    DEFAULT NULL     -- Optional free-text note
-);
-```
-
-The database file (`expenses.db`) is created automatically in the project directory on first run.
-
----
-
-## 💡 Example Conversations with Claude
-
-Once connected, you can talk to Claude naturally:
-
-> *"Log $45 for groceries today."*
-
-> *"What did I spend last week?"*
-
-> *"How much have I spent on subscriptions this month?"*
-
-> *"Give me a full breakdown of my July expenses."*
-
-> *"Add a $200 expense for flights on 2025-08-01 under travel."*
-
-> *"Add that to my Google Calendar too."* ← triggers `add_to_calendar` after your approval
 
 ---
 
 ## 🤝 Contributing
 
-Contributions are welcome! Feel free to open an issue or submit a pull request for:
-
-- New categories or subcategories
-- Additional MCP tools (e.g., delete, edit, export to CSV)
+Pull requests welcome! Ideas:
+- Recurring budget copy (auto-roll budgets to next month)
 - Multi-currency support
-- Budget tracking features
-- Timezone configuration via environment variable
+- Export to CSV / Excel
+- Savings goal tracking
+- Timezone config via environment variable
 
 ---
 
 ## 📄 License
 
-This project is open source. See [LICENSE](LICENSE) for details.
+Open source. See [LICENSE](LICENSE) for details.
 
 ---
 
-*Built with [FastMCP](https://github.com/jlowin/fastmcp) · Powered by SQLite · Google Calendar Integration · Designed for local-first privacy*
+*Built with [FastMCP](https://github.com/jlowin/fastmcp) · SQLite · Google Calendar · Local-first privacy*
