@@ -10,3 +10,4 @@ wheels/
 .venv
 token.json
 credentials.json
+expenses.db
